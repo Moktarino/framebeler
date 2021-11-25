@@ -58,3 +58,6 @@ It outputs a json file containing the labels indexed against the frames, grouped
    }
 }
 ```
+
+
+The goal is to create a dataset class that can be used to dynamically extract (labeled) frames from the video files directly during training, rather than trying to herd many thousands of previously exported frames.  Currently it only emits json as a above, as an intermediate step I plan on exporting the tagged frames to file.
