@@ -2,7 +2,7 @@
 
 
 Framebeler takes a directory of videos and presents them to you frame by frame with an interface to label each frame.
-It outputs a json file containing the labels indexed against the frames, e.g.: 
+It outputs a json file containing the labels indexed against the frames, grouped by the video file's hash, e.g.: 
 
 ```json
 {
@@ -23,13 +23,6 @@ It outputs a json file containing the labels indexed against the frames, e.g.:
             "test2",
             "test3"
          ],
-         "176":[
-            "test3"
-         ],
-         "244":[
-            "test3",
-            "test1"
-         ],
          "279":[
             "test3",
             "test1",
@@ -43,12 +36,6 @@ It outputs a json file containing the labels indexed against the frames, e.g.:
          "25":[
             "test2"
          ],
-         "107":[
-            
-         ],
-         "141":[
-            "test3"
-         ],
          "161":[
             "test3",
             "test1"
@@ -60,9 +47,6 @@ It outputs a json file containing the labels indexed against the frames, e.g.:
          ],
          "27":[
             "test2"
-         ],
-         "73":[
-            
          ],
          "101":[
             "test2"
