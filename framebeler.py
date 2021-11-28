@@ -15,6 +15,9 @@ class Framebeler():
     input_map = None
     fps = None
     framedelay = None
+    frame = None
+    paused = False
+    update_after_input = False
 
     colors = {
         'white': (255,255,255),
@@ -24,6 +27,7 @@ class Framebeler():
         'grey': (225,225,225)
     }
 
+    speed_adjust_increment = 10
     frameskip = 50
     font = cv2.FONT_HERSHEY_SIMPLEX
     font_scale = 1.0
@@ -102,14 +106,11 @@ class Framebeler():
 
 
 
-    def drawUI(self, frame, frame_id):
-        self.input_map
-        global video_label_maps
-        shape = frame.shape
-        image_height = shape[0]
-        image_width = shape[1]
+    def drawUI(self):
+        image_height = self.frame.shape[0]
+        image_width = self.frame.shape[1]
         rectangles = []
-        selected_labels, _ = self.get_labels_for_frame(frame_id)
+        selected_labels, _ = self.get_labels_for_frame(self.current_frame)
 
         for label in self.labels:
             color = self.colors['white']
@@ -133,8 +134,8 @@ class Framebeler():
             x_offset = image_width - rectangle['text_width']
             y_top = y_bottom
             y_bottom += rectangle['text_height'] + rectangle['baseline']
-            frame = cv2.rectangle(frame,(x_offset,y_top),(image_width,y_bottom), rectangle_color, self.thickness )
-            frame = cv2.putText(frame, rectangle['text'], (x_offset, y_top + text_height), self.font, self.font_scale, textcolor, 2 )
+            self.frame = cv2.rectangle(self.frame,(x_offset,y_top),(image_width,y_bottom), rectangle_color, self.thickness )
+            self.frame = cv2.putText(self.frame, rectangle['text'], (x_offset, y_top + text_height), self.font, self.font_scale, textcolor, 2 )
 
             if rectangle['text'] not in [value for elem in self.input_map for value in elem.values()]:
                 self.input_map.append({
@@ -145,13 +146,9 @@ class Framebeler():
                     'label': rectangle['text']
                     }
                 )
-        return frame
+        #return frame
 
-    def draw_frame(self, frame, frame_id):
-        frame = self.drawUI(frame, frame_id)
-        cv2.namedWindow('Frame')
-        cv2.setMouseCallback('Frame',self.get_input, (frame, frame_id))
-        cv2.imshow('Frame',frame)
+
 
     def get_labels_for_frame(self, frame_id):
         is_inherited = False
@@ -169,12 +166,12 @@ class Framebeler():
         self.video_label_maps[self.videohash][int(frame_id)] = current_labels
 
     def get_input(self, event,x,y,flags,param):
+        parent = param[0]
         if event == cv2.EVENT_LBUTTONDOWN:
             print(f"Current Frame: {self.current_frame}")
             current_labels, is_inherited = self.get_labels_for_frame(self.current_frame)
             for input_box in self.input_map:
                 label = input_box['label']
-                frame = param[0]
                 if (x >= input_box['topleft_x']) and ( y in range(input_box['topleft_y'], input_box['bottomright_y']+1)):
                     if label not in current_labels:
                         print(f"Adding label: {label} to frame ID: {self.current_frame}")
@@ -185,17 +182,94 @@ class Framebeler():
                     self.update_label_maps(self.current_frame, current_labels) 
                     print("Current labels: ")
                     print(self.video_label_maps[self.videohash][self.current_frame])
-                    self.draw_frame(frame, self.current_frame)
+                    parent.draw_frame()
 
-    def clear_labels(self):
+    def clear_labels(self, vc):
         self.video_label_maps[self.videohash] = SortedDict({0:[]})
+        vc.draw_frame()
 
-    def __init__(self, videodir, datafile='tag_data.json'):
-        self.import_data(datafile)
-        self.save_data(datafile)
-        self.videodir = videodir
-        self.input_map = []
-        paused = False
+
+
+        
+    class VideoController():
+        parent = None
+        video_end = False
+        def __init__(self, parent):
+            self.parent = parent
+        
+        def load_video(self):
+            if not self.parent.videos:
+                self.parent.videos = os.listdir(self.parent.videodir)
+            if self.parent.current_video_num >= len(self.parent.videos):
+                self.parent.current_video_num = 0
+            videopath = os.path.join(self.parent.videodir, self.parent.videos[self.parent.current_video_num])
+            print(f"{videopath}")
+            self.parent.videohash = self.parent.get_filehash(videopath)
+            if self.parent.videohash not in self.parent.video_label_maps.keys():
+                self.parent.video_label_maps[self.parent.videohash] = SortedDict({0: []})
+            
+            self.parent.cap = cv2.VideoCapture(videopath)
+            self.video_end = False
+
+            if (self.parent.cap.isOpened()== False):
+                print(f"Error opening video file {self.parent.current_video_num}: {videopath}")
+                self.parent.current_video_num += 1
+                self.parent.load_video()
+
+            self.parent.fps = self.parent.cap.get(cv2.CAP_PROP_FPS)
+            print(f"FPS: {self.parent.fps}")
+            self.parent.framedelay = int(1000 / self.parent.fps)
+            self.parent.next_frame = int(self.parent.cap.get(cv2.CAP_PROP_POS_FRAMES))
+            self.parent.current_frame = self.parent.next_frame - 1 if self.parent.next_frame > 0 else 0
+            self.parent.previous_frame = self.parent.current_frame - 1 if self.parent.current_frame > 0 else 0
+            
+        def draw_frame(self):
+            self.parent.drawUI()
+            cv2.namedWindow('Frame')
+            cv2.setMouseCallback('Frame',self.parent.get_input, [self])
+            cv2.imshow('Frame',self.parent.frame)
+
+        def skip_frames(self, direction):
+            print("Skipping forward")
+            if direction == "forward":
+                self.parent.current_frame += self.parent.frameskip
+            if direction == "back":
+                self.parent.current_frame = (self.parent.current_frame - self.parent.frameskip) if self.parent.current_frame >= self.parent.frameskip else 0
+            
+            self.show_frame()
+
+        def show_frame(self):
+            video_pos = int(self.parent.cap.get(cv2.CAP_PROP_POS_FRAMES))
+
+            read_new_frame = True
+            if self.parent.paused:
+                read_new_frame = False
+
+            if abs(self.parent.current_frame - video_pos) > 1:
+                self.parent.cap.set(cv2.CAP_PROP_POS_FRAMES, self.parent.current_frame - 1)
+                read_new_frame = True
+
+            if read_new_frame:
+                ret, self.parent.frame = self.parent.cap.read()
+                self.parent.current_frame = int(self.parent.cap.get(cv2.CAP_PROP_POS_FRAMES))
+                if ret == True:
+                    self.draw_frame()
+                else:
+                    self.parent.cap.release()  
+                    self.video_end = True 
+
+        def adjust_speed(self, direction):
+            if direction == "up":
+                if self.parent.framedelay > self.parent.speed_adjust_increment:
+                    self.parent.framedelay = (self.parent.framedelay - self.parent.speed_adjust_increment)  
+                else:
+                    self.parent.framedelay = 1 
+            elif direction == "down":
+                self.parent.framedelay += self.parent.speed_adjust_increment
+            print(self.parent.framedelay)
+
+
+    def get_keyboard_input(self, vc):
         keys = {
             'up': 82,
             'down': 84,
@@ -205,62 +279,56 @@ class Framebeler():
             'enter': 13,
             'n': 110,
             'p': 112,
-            '[': 93,
-            ']': 91,
+            ']': 93,
+            '[': 91,
             'c': 99,
             "space": 32
         }
-        
-        while True:
-            self.load_video()
-            while(self.cap.isOpened()):
-                if not paused:
-                    ret, frame = self.cap.read()
-                if ret == True:
-                    self.draw_frame(frame, self.current_frame)
-                    key = cv2.waitKey(self.framedelay)
-                    if not key == -1:
-                        print(key)
-                    if key in keys.values():
-                        if key == keys['right']:  # Skip forward
-                            print("Skipping forward")
-                            self.current_frame += self.frameskip
-                            self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.current_frame)
 
-                        if key == keys['left']:  # Skip back
-                            print("Skipping back")
-                            self.current_frame = (self.current_frame - self.frameskip) if self.current_frame >= self.frameskip else 0
-                            self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.current_frame)          
-                        if key == keys['c']:  # Clear all labels for current video
-                            print("Clearing labels")
-                            self.clear_labels()
-                        if key == keys['[']:  # Speed up
-                            self.framedelay = (self.framedelay - 10) if self.framedelay > 10 else 1 
-                            print(self.framedelay) 
-                        if key == keys[']']:  # Slow down
-                            self.framedelay += 10
-                            print(self.framedelay) 
-                        if key == keys['n']:  # Next
-                            self.current_video_num += 1
-                            self.load_video()
-                        if key == keys['p']:  # Previous
-                            self.cap.release()
-                            self.current_video_num = (self.current_video_num - 1) if not self.current_video_num == 0 else 0
-                            self.load_video()
-                        if key == keys['enter']:
-                            self.save_data(datafile)
-                        if key == keys['esc']:  # Quit
-                            print("escape!")
-                            cv2.destroyAllWindows()
-                            self.save_data(datafile)
-                            exit(0)
-                        if key == keys['space']:
-                            paused = False if paused == True else True
-                    self.current_frame = (self.current_frame + 1) if not paused else self.current_frame     
-                else:
-                    break
+        key = cv2.waitKey(self.framedelay)
+        #if not key == -1:
+        #    print(key)
+        if key in keys.values():
+            if key == keys['right']:
+                vc.skip_frames("forward")
+            if key == keys['left']: 
+                vc.skip_frames("back")      
+            if key == keys['c']:
+                self.clear_labels(vc)
+            if key == keys['[']:
+                vc.adjust_speed("down")
+            if key == keys[']']:
+                vc.adjust_speed("up")
+            if key == keys['n']:
+                self.current_video_num += 1
+                vc.load_video()
+            if key == keys['p']: 
+                self.current_video_num = (self.current_video_num - 1) if not self.current_video_num == 0 else 0
+                vc.load_video()
+            if key == keys['enter']:
+                self.save_data(datafile)
+            if key == keys['esc']:
+                cv2.destroyAllWindows()
+                self.save_data(self.datafile)
+                exit(0)
+            if key == keys['space']:
+                self.paused = False if self.paused == True else True
+
+
+    def __init__(self, videodir, datafile='tag_data.json'):
+        self.datafile = datafile
+        self.import_data(datafile)
+        self.save_data(datafile)
+        self.videodir = videodir
+        self.input_map = []
+        vc = self.VideoController(self)
+    
+        while True:
+            vc.load_video()
+            while(not vc.video_end):
+                vc.show_frame()
+                self.get_keyboard_input(vc)
             self.current_video_num += 1
         self.save_data(datafile)
-
 
 fb = Framebeler(videodir='media', datafile="data.json")
