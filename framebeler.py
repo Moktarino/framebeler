@@ -1,5 +1,5 @@
 from PIL import Image, ImageStat
-import pickle, cv2, os, shutil, math, hashlib, json
+import pickle, cv2, os, shutil, math, hashlib, json, time
 from sortedcontainers import SortedDict
 
 
@@ -195,7 +195,7 @@ class Framebeler():
         self.save_data(datafile)
         self.videodir = videodir
         self.input_map = []
-
+        paused = False
         keys = {
             'up': 82,
             'down': 84,
@@ -207,14 +207,15 @@ class Framebeler():
             'p': 112,
             '[': 93,
             ']': 91,
-            'c': 99
+            'c': 99,
+            "space": 32
         }
-
         
         while True:
             self.load_video()
             while(self.cap.isOpened()):
-                ret, frame = self.cap.read()
+                if not paused:
+                    ret, frame = self.cap.read()
                 if ret == True:
                     self.draw_frame(frame, self.current_frame)
                     key = cv2.waitKey(self.framedelay)
@@ -222,12 +223,16 @@ class Framebeler():
                         print(key)
                     if key in keys.values():
                         if key == keys['right']:  # Skip forward
+                            print("Skipping forward")
                             self.current_frame += self.frameskip
                             self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.current_frame)
+
                         if key == keys['left']:  # Skip back
+                            print("Skipping back")
                             self.current_frame = (self.current_frame - self.frameskip) if self.current_frame >= self.frameskip else 0
                             self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.current_frame)          
                         if key == keys['c']:  # Clear all labels for current video
+                            print("Clearing labels")
                             self.clear_labels()
                         if key == keys['[']:  # Speed up
                             self.framedelay = (self.framedelay - 10) if self.framedelay > 10 else 1 
@@ -249,7 +254,9 @@ class Framebeler():
                             cv2.destroyAllWindows()
                             self.save_data(datafile)
                             exit(0)
-                    self.current_frame += 1        
+                        if key == keys['space']:
+                            paused = False if paused == True else True
+                    self.current_frame = (self.current_frame + 1) if not paused else self.current_frame     
                 else:
                     break
             self.current_video_num += 1
