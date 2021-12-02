@@ -26,7 +26,7 @@ class Framebeler():
         'black': (0,0,0),
         'grey': (225,225,225)
     }
-
+    pg_font = pygame.font.SysFont('Arial', 25)
     frameskip = 50
     font = cv2.FONT_HERSHEY_SIMPLEX
     font_scale = 1.0
@@ -249,6 +249,27 @@ class Framebeler():
                 print(self.video_label_maps[self.videohash][self.current_frame])
                 vc.draw_frame()
 
+    def get_text(self, vc):
+        self.paused = True
+        receiving_input = True
+        text_input = ""
+        while receiving_input:
+            for event in pygame.event.get():
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_RETURN:
+                        self.labels.append(text_input)
+                        receiving_input = False
+                    elif event.key == pygame.K_ESCAPE:
+                        receiving_input = False
+                    elif event.key == pygame.K_BACKSPACE:
+                        text_input = text_input[:-1]
+                    else:
+                        text_input += event.unicode
+            self.rect = pygame.draw.rect(self.vc.screen, (255,255,255), (175, 75, 200, 100), 0)
+            self.vc.screen.blit(self.pg_font.render(text_input, True, (255,0,0)), (200, 100))
+            pygame.display.update()
+        self.paused = False
+
 
     def process_keyboard_input(self, event, vc):
         if event.key == pygame.K_LEFTBRACKET:
@@ -270,10 +291,12 @@ class Framebeler():
         if event.key == pygame.K_SPACE:
             self.paused = False if self.paused == True else True
         if event.key == pygame.K_RETURN:
-            self.save_data(datafile)
+            self.save_data(self.datafile)
         if event.key == pygame.K_ESCAPE:
             self.save_data(self.datafile)
             exit(0)
+        if event.key == pygame.K_l:
+            self.get_text(vc)
 
 
     def get_input(self, vc):
