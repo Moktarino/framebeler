@@ -164,6 +164,9 @@ class Framebeler():
                 self.parent.videos = os.listdir(self.parent.videodir)
             if self.parent.current_video_num >= len(self.parent.videos):
                 self.parent.current_video_num = 0
+            if self.parent.current_video_num < 0:
+                self.parent.current_video_num = len(self.parent.videos) - 1
+
             videopath = os.path.join(self.parent.videodir, self.parent.videos[self.parent.current_video_num])
             print(f"{videopath}")
             self.parent.videohash = self.parent.get_filehash(videopath)
@@ -180,9 +183,7 @@ class Framebeler():
 
             self.parent.fps = self.parent.cap.get(cv2.CAP_PROP_FPS)
             print(f"FPS: {self.parent.fps}")
-
-            self.parent.next_frame = int(self.parent.cap.get(cv2.CAP_PROP_POS_FRAMES))
-            self.parent.current_frame = self.parent.next_frame - 1 if self.parent.next_frame > 0 else 0
+            self.parent.current_frame = 0
             
 
         def draw_frame(self):
@@ -192,6 +193,8 @@ class Framebeler():
                 self.screen = pygame.display.set_mode((image.get_width(),image.get_height()))
             self.screen.blit(image, (0,0))
             pygame.display.update()
+            if self.parent.fps <= 1:
+                self.parent.fps = 1
             self.parent.clock.tick(self.parent.fps)
 
 
@@ -200,7 +203,10 @@ class Framebeler():
             if direction == "forward":
                 self.parent.current_frame += self.parent.frameskip
             if direction == "back":
-                self.parent.current_frame = (self.parent.current_frame - self.parent.frameskip) if self.parent.current_frame >= self.parent.frameskip else 0
+                if self.parent.current_frame >= self.parent.frameskip:
+                    self.parent.current_frame = 0
+                else:
+                    self.parent.current_frame -= self.parent.frameskip
             self.show_frame()
 
 
@@ -259,14 +265,13 @@ class Framebeler():
             self.current_video_num += 1
             vc.load_video()
         if event.key == pygame.K_p:
-            self.current_video_num = (self.current_video_num - 1) if not self.current_video_num == 0 else 0
+            self.current_video_num -= 1
             vc.load_video()
         if event.key == pygame.K_SPACE:
             self.paused = False if self.paused == True else True
         if event.key == pygame.K_RETURN:
             self.save_data(datafile)
         if event.key == pygame.K_ESCAPE:
-            cv2.destroyAllWindows()
             self.save_data(self.datafile)
             exit(0)
 
