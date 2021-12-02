@@ -85,32 +85,6 @@ class Framebeler():
         return hasher.hexdigest().upper()
 
 
-    def load_video(self):
-        if not self.videos:
-            self.videos = os.listdir(self.videodir)
-        videopath = os.path.join(self.videodir, self.videos[self.current_video_num])
-        print(f"{videopath}")
-        self.videohash = self.get_filehash(videopath)
-        if self.videohash not in self.video_label_maps.keys():
-            self.video_label_maps[self.videohash] = SortedDict({0: []})
-        
-        self.cap = cv2.VideoCapture(videopath)
-
-        if (self.cap.isOpened()== False):
-            print(f"Error opening video file {self.current_video_num}: {videopath}")
-            self.current_video_num += 1
-            self.load_video()
-
-        self.fps = self.cap.get(cv2.CAP_PROP_FPS)
-        if self.fps < 1:
-            self.fps = 30
-            print("Video missing FPS property, setting to a default of 30")
-        print(f"FPS: {self.fps}")
-        self.next_frame = int(self.cap.get(cv2.CAP_PROP_POS_FRAMES))
-        self.current_frame = self.next_frame - 1 if self.next_frame > 0 else 0
-        self.previous_frame = self.current_frame - 1 if self.current_frame > 0 else 0
-
-
     def drawUI(self):
         image_height = self.frame.shape[0]
         image_width = self.frame.shape[1]
@@ -151,7 +125,6 @@ class Framebeler():
                     'label': rectangle['text']
                     }
                 )
-        #return frame
 
 
     def get_labels_for_frame(self, frame_id):
@@ -176,8 +149,6 @@ class Framebeler():
         vc.draw_frame()
 
 
-
-        
     class VideoController():
         parent = None
         video_end = False
@@ -205,14 +176,13 @@ class Framebeler():
             if (self.parent.cap.isOpened()== False):
                 print(f"Error opening video file {self.parent.current_video_num}: {videopath}")
                 self.parent.current_video_num += 1
-                self.parent.load_video()
+                self.load_video()
 
             self.parent.fps = self.parent.cap.get(cv2.CAP_PROP_FPS)
             print(f"FPS: {self.parent.fps}")
 
             self.parent.next_frame = int(self.parent.cap.get(cv2.CAP_PROP_POS_FRAMES))
             self.parent.current_frame = self.parent.next_frame - 1 if self.parent.next_frame > 0 else 0
-            self.parent.previous_frame = self.parent.current_frame - 1 if self.parent.current_frame > 0 else 0
             
 
         def draw_frame(self):
@@ -231,7 +201,6 @@ class Framebeler():
                 self.parent.current_frame += self.parent.frameskip
             if direction == "back":
                 self.parent.current_frame = (self.parent.current_frame - self.parent.frameskip) if self.parent.current_frame >= self.parent.frameskip else 0
-            
             self.show_frame()
 
 
