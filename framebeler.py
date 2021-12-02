@@ -1,9 +1,11 @@
 from PIL import Image, ImageStat
-import pickle, cv2, os, shutil, math, hashlib, json, time
+import pickle, cv2, os, shutil, math, hashlib, json, time, pygame
 from sortedcontainers import SortedDict
 
 
 class Framebeler():
+    pygame.init()
+    clock = pygame.time.Clock()
     current_video_num = 0
     videohash = None
     video_label_maps = None
@@ -14,11 +16,11 @@ class Framebeler():
     cap = None
     input_map = None
     fps = None
-    framedelay = None
     frame = None
     paused = False
     update_after_input = False
-
+    vc = None
+    
     colors = {
         'white': (255,255,255),
         'red': (0,0,255),
@@ -39,12 +41,14 @@ class Framebeler():
             json.dump(data, outfile)
             print(f"Written to: ./{filepath}")
 
+
     def read_json(self, filepath):
         if not os.path.exists(filepath):
             self.import_data(filepath, init=True)
         with open(filepath) as json_file:
             data = json.load(json_file)
         return data
+
 
     def import_data(self, datafile, init=False):
 
@@ -67,6 +71,7 @@ class Framebeler():
             self.labels = data['labels']
             self.video_label_maps = jsonKeys2int(data['label_maps'])
 
+
     def save_data(self, datafile):
         data = {
             'labels': self.labels,
@@ -74,12 +79,14 @@ class Framebeler():
         }
         self.write_json(datafile, data)
 
+
     def get_filehash(self, path):
         hasher = hashlib.md5()
         with open(path, 'rb') as afile:
             buf = afile.read()
             hasher.update(buf)
         return hasher.hexdigest().upper()
+
 
     def load_video(self):
         if not self.videos:
@@ -98,12 +105,13 @@ class Framebeler():
             self.load_video()
 
         self.fps = self.cap.get(cv2.CAP_PROP_FPS)
+        if self.fps < 1:
+            self.fps == 30
+            print("Video missing FPS property, setting to a default of 30")
         print(f"FPS: {self.fps}")
-        self.framedelay = int(1000 / self.fps)
         self.next_frame = int(self.cap.get(cv2.CAP_PROP_POS_FRAMES))
         self.current_frame = self.next_frame - 1 if self.next_frame > 0 else 0
         self.previous_frame = self.current_frame - 1 if self.current_frame > 0 else 0
-
 
 
     def drawUI(self):
@@ -149,7 +157,6 @@ class Framebeler():
         #return frame
 
 
-
     def get_labels_for_frame(self, frame_id):
         is_inherited = False
         if frame_id not in self.video_label_maps[self.videohash].keys():
@@ -162,27 +169,10 @@ class Framebeler():
             label_map = self.video_label_maps[self.videohash][frame_id].copy()
         return label_map, is_inherited
 
+
     def update_label_maps(self, frame_id, current_labels):
         self.video_label_maps[self.videohash][int(frame_id)] = current_labels
 
-    def get_input(self, event,x,y,flags,param):
-        parent = param[0]
-        if event == cv2.EVENT_LBUTTONDOWN:
-            print(f"Current Frame: {self.current_frame}")
-            current_labels, is_inherited = self.get_labels_for_frame(self.current_frame)
-            for input_box in self.input_map:
-                label = input_box['label']
-                if (x >= input_box['topleft_x']) and ( y in range(input_box['topleft_y'], input_box['bottomright_y']+1)):
-                    if label not in current_labels:
-                        print(f"Adding label: {label} to frame ID: {self.current_frame}")
-                        current_labels.append(label)
-                    else:
-                        print(f"Removing label: {label} frame ID: {self.current_frame}")
-                        current_labels.remove(label)
-                    self.update_label_maps(self.current_frame, current_labels) 
-                    print("Current labels: ")
-                    print(self.video_label_maps[self.videohash][self.current_frame])
-                    parent.draw_frame()
 
     def clear_labels(self, vc):
         self.video_label_maps[self.videohash] = SortedDict({0:[]})
@@ -194,9 +184,13 @@ class Framebeler():
     class VideoController():
         parent = None
         video_end = False
+        screen = None
+
+
         def __init__(self, parent):
             self.parent = parent
         
+
         def load_video(self):
             if not self.parent.videos:
                 self.parent.videos = os.listdir(self.parent.videodir)
@@ -218,16 +212,21 @@ class Framebeler():
 
             self.parent.fps = self.parent.cap.get(cv2.CAP_PROP_FPS)
             print(f"FPS: {self.parent.fps}")
-            self.parent.framedelay = int(1000 / self.parent.fps)
+
             self.parent.next_frame = int(self.parent.cap.get(cv2.CAP_PROP_POS_FRAMES))
             self.parent.current_frame = self.parent.next_frame - 1 if self.parent.next_frame > 0 else 0
             self.parent.previous_frame = self.parent.current_frame - 1 if self.parent.current_frame > 0 else 0
             
+
         def draw_frame(self):
             self.parent.drawUI()
-            cv2.namedWindow('Frame')
-            cv2.setMouseCallback('Frame',self.parent.get_input, [self])
-            cv2.imshow('Frame',self.parent.frame)
+            image = pygame.image.frombuffer(self.parent.frame.tostring(), self.parent.frame.shape[1::-1], "RGB")
+            if not self.screen:
+                self.screen = pygame.display.set_mode((image.get_width(),image.get_height()))
+            self.screen.blit(image, (0,0))
+            pygame.display.update()
+            self.parent.clock.tick(self.parent.fps)
+
 
         def skip_frames(self, direction):
             print("Skipping forward")
@@ -237,6 +236,7 @@ class Framebeler():
                 self.parent.current_frame = (self.parent.current_frame - self.parent.frameskip) if self.parent.current_frame >= self.parent.frameskip else 0
             
             self.show_frame()
+
 
         def show_frame(self):
             video_pos = int(self.parent.cap.get(cv2.CAP_PROP_POS_FRAMES))
@@ -258,61 +258,62 @@ class Framebeler():
                     self.parent.cap.release()  
                     self.video_end = True 
 
-        def adjust_speed(self, direction):
-            if direction == "up":
-                if self.parent.framedelay > self.parent.speed_adjust_increment:
-                    self.parent.framedelay = (self.parent.framedelay - self.parent.speed_adjust_increment)  
+
+    def process_mouse_input(self, event, vc):
+        print(f"Current Frame: {self.current_frame}")
+        current_labels, _ = self.get_labels_for_frame(self.current_frame)
+        x, y = event.pos
+        for input_box in self.input_map:
+            label = input_box['label']
+            if (x >= input_box['topleft_x']) and ( y in range(input_box['topleft_y'], input_box['bottomright_y']+1)):
+                if label not in current_labels:
+                    print(f"Adding label: {label} to frame ID: {self.current_frame}")
+                    current_labels.append(label)
                 else:
-                    self.parent.framedelay = 1 
-            elif direction == "down":
-                self.parent.framedelay += self.parent.speed_adjust_increment
-            print(self.parent.framedelay)
+                    print(f"Removing label: {label} frame ID: {self.current_frame}")
+                    current_labels.remove(label)
+                self.update_label_maps(self.current_frame, current_labels) 
+                print("Current labels: ")
+                print(self.video_label_maps[self.videohash][self.current_frame])
+                vc.draw_frame()
 
 
-    def get_keyboard_input(self, vc):
-        keys = {
-            'up': 82,
-            'down': 84,
-            'left': 81,
-            'right': 83,
-            'esc': 27,
-            'enter': 13,
-            'n': 110,
-            'p': 112,
-            ']': 93,
-            '[': 91,
-            'c': 99,
-            "space": 32
-        }
+    def process_keyboard_input(self, event, vc):
+        if event.key == pygame.K_LEFTBRACKET:
+            self.fps -= 1
+        if event.key == pygame.K_RIGHTBRACKET:
+            self.fps += 1
+        if event.key == pygame.K_RIGHT:
+            vc.skip_frames("forward")            
+        if event.key == pygame.K_LEFT:
+            vc.skip_frames("back")  
+        if event.key == pygame.K_c:
+            self.clear_labels(vc)
+        if event.key == pygame.K_n:
+            self.current_video_num += 1
+            vc.load_video()
+        if event.key == pygame.K_p:
+            self.current_video_num = (self.current_video_num - 1) if not self.current_video_num == 0 else 0
+            vc.load_video()
+        if event.key == pygame.K_SPACE:
+            self.paused = False if self.paused == True else True
+        if event.key == pygame.K_RETURN:
+            self.save_data(datafile)
+        if event.key == pygame.K_ESCAPE:
+            cv2.destroyAllWindows()
+            self.save_data(self.datafile)
+            exit(0)
 
-        key = cv2.waitKey(self.framedelay)
-        #if not key == -1:
-        #    print(key)
-        if key in keys.values():
-            if key == keys['right']:
-                vc.skip_frames("forward")
-            if key == keys['left']: 
-                vc.skip_frames("back")      
-            if key == keys['c']:
-                self.clear_labels(vc)
-            if key == keys['[']:
-                vc.adjust_speed("down")
-            if key == keys[']']:
-                vc.adjust_speed("up")
-            if key == keys['n']:
-                self.current_video_num += 1
-                vc.load_video()
-            if key == keys['p']: 
-                self.current_video_num = (self.current_video_num - 1) if not self.current_video_num == 0 else 0
-                vc.load_video()
-            if key == keys['enter']:
-                self.save_data(datafile)
-            if key == keys['esc']:
-                cv2.destroyAllWindows()
-                self.save_data(self.datafile)
-                exit(0)
-            if key == keys['space']:
-                self.paused = False if self.paused == True else True
+
+    def get_input(self, vc):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                exit()
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                self.process_mouse_input(event, vc)
+            if event.type == pygame.KEYDOWN:
+                self.process_keyboard_input(event, vc)
 
 
     def __init__(self, videodir, datafile='tag_data.json'):
@@ -321,14 +322,20 @@ class Framebeler():
         self.save_data(datafile)
         self.videodir = videodir
         self.input_map = []
-        vc = self.VideoController(self)
+        self.vc = self.VideoController(self)
     
-        while True:
-            vc.load_video()
-            while(not vc.video_end):
-                vc.show_frame()
-                self.get_keyboard_input(vc)
-            self.current_video_num += 1
-        self.save_data(datafile)
 
-fb = Framebeler(videodir='media', datafile="data.json")
+    def begin(self):
+        while True:
+            self.vc.load_video()
+            while(not self.vc.video_end):
+                self.vc.show_frame()
+                self.get_input(self.vc)
+            self.current_video_num += 1
+        self.save_data(self.datafile)
+
+
+
+if __name__ = "__main__":
+    fb = Framebeler(videodir='media', datafile="data.json")
+    fb.begin()
