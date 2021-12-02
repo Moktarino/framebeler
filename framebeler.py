@@ -103,7 +103,7 @@ class Framebeler():
 
         self.fps = self.cap.get(cv2.CAP_PROP_FPS)
         if self.fps < 1:
-            self.fps == 30
+            self.fps = 30
             print("Video missing FPS property, setting to a default of 30")
         print(f"FPS: {self.fps}")
         self.next_frame = int(self.cap.get(cv2.CAP_PROP_POS_FRAMES))
