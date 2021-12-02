@@ -229,22 +229,19 @@ class Framebeler():
 
 
         def skip_frames(self, direction):
-            print("Skipping forward")
             if direction == "forward":
                 self.parent.current_frame += self.parent.frameskip
             if direction == "back":
                 self.parent.current_frame = (self.parent.current_frame - self.parent.frameskip) if self.parent.current_frame >= self.parent.frameskip else 0
-            
             self.show_frame()
 
 
         def show_frame(self):
-            video_pos = int(self.parent.cap.get(cv2.CAP_PROP_POS_FRAMES))
-
             read_new_frame = True
             if self.parent.paused:
                 read_new_frame = False
-
+                
+            video_pos = int(self.parent.cap.get(cv2.CAP_PROP_POS_FRAMES))
             if abs(self.parent.current_frame - video_pos) > 1:
                 self.parent.cap.set(cv2.CAP_PROP_POS_FRAMES, self.parent.current_frame - 1)
                 read_new_frame = True
